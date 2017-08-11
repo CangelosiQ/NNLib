@@ -33,6 +33,7 @@ class NN():
         self.b=biases
         self.type_layer=types_layers
         self.dim_model=dim_model
+        # self.connections_depths=
 
     def __str__(self):
         print('Neural Network with dimensions:',self.dim_model)
@@ -319,6 +320,58 @@ def KFolds(X,y,k,func_build, args_func_build,print_info=True):
 ## Function predict ===========================================================
 def predict(model,X):
     return forward_propagation(model,X)
+    
+## Function dropout predictions ===============================================
+# Dropout method: we "switch off" a node and predict with this model the output
+# then do it again with a different node switched off until we decide to stop
+# At the end, the prediction is the average of all the predictions.
+# This method generally input the generalization accuracy by preventing the 
+# model to overfit
+def dropout_predictions(model,X):
+    dims=model.dim_model
+    print(dims,model.W)
+    nb_nodes=np.sum(dims[1:-1]) # the number of hidden nodes
+    nb_weights_per_layer=[]
+    for i in range(len(dims)-1):
+        nb_weights_per_layer.append(dims[i]*dims[i+1])
+    print('Nb nodes: %d, Nb weights_per_layer: %s' % (nb_nodes,nb_weights_per_layer))
+    current_layer = 1
+    
+    for i in range(nb_nodes):
+        print('Drop out with Node: %d - current_layer: %d'%(i,current_layer))
+        if i >= np.sum(dims[1:current_layer+1]):
+            print('i over ',np.sum(dims[1:current_layer]))
+            current_layer+=1
+        delta=np.sum(nb_weights_per_layer[:current_layer-1])
+        deltap=np.sum(nb_weights_per_layer[:current_layer])
+        ind_in_layer=i-np.sum(dims[:current_layer-1])
+        print('delta: %d, deltap: %d, ind_in_layer: %d'%(delta,deltap,ind_in_layer))
+        # switching off node i
+        theta=copy.copy(model_to_theta(model.W))
+        
+        # print(theta)
+        index=range((delta+dims[current_layer-1]*ind_in_layer).astype(int),(delta+dims[current_layer-1]*(ind_in_layer+1)).astype(int))
+        for i in index:
+            print(i,end=' ')
+        theta[index]=0
+        # print('\n',type(theta))
+        ind=deltap+range(dims[current_layer+1])*dims[current_layer]+ind_in_layer
+        print(ind.astype(int))
+        theta[ind.astype(int)]=0
+        # print(theta)
+        
+        # biases
+        theta_b=model_to_theta(model.b)
+        print(theta_b)
+        theta_b[i]=0
+        
+        model_to_use=copy.copy(model)
+        model_to_use.W=theta_to_model(theta,dims)
+        model_to_use.b=theta_to_(theta,dims)
+        stop=input('Press any key and enter')
+    return 0
+
+    
 
 """============================================================================
     =======================  FUNCTIONS COST  ==============================
@@ -347,16 +400,17 @@ def loss(model, X, targets, method, wd_coefficient=0):
 ============================================================================"""
 
 ## Function Model to Theta =====================================================
-def model_to_theta(model):
-    # This function takes a model (or gradient in model form), and turns it into one long vector. See also theta_to_model.
+def model_to_theta(model_W):
+    # This function takes a list of matrices of weights, and turns it into 
+    # one long vector. Taking line by line.
     T=[]
-    for i in range(len(model)):
-        if len(model[i].shape)==2:
-            [n,m]=model[i].shape
+    for i in range(len(model_W)):
+        if len(model_W[i].shape)==2:
+            [n,m]=model_W[i].shape
         else:
-            n=model[i].shape[0]
+            n=model_W[i].shape[0]
             m=1
-        T.append(np.reshape(model[i],(n*m,1)))
+        T.append(np.reshape(model_W[i],(n*m,1)))
     return np.concatenate(T)
 
 
@@ -428,7 +482,7 @@ def normalize_data(X,axis=0,method='L2',positif=False,params=None):
             s=np.max(np.abs(X-m),axis)
     else:
         m,s=params
-    print(m,s,np.mean(X-m,axis),np.var((X-m)/s,axis))
+    # print(m,s,np.mean(X-m,axis),np.var((X-m)/s,axis))
     X=(X-m)/s
     if positif:
         X=(X+1)/2
@@ -481,7 +535,10 @@ def add_noise(X,new_size,noise_level=0.01,axis=1):
     n=X.shape[axis]
     nb=int(np.ceil(new_size/n))
     # print(nb)
-    X_noise=copy.copy(X)
+    if n==new_size:
+        X_noise=X+np.random.randn(X.shape[0],X.shape[1])*X*noise_level
+    else:
+        X_noise=copy.copy(X)
     for i in range(nb):
         X_noise=np.concatenate([X_noise,X+np.random.randn(X.shape[0],X.shape[1])*X*noise_level],axis)
     if axis==1:
